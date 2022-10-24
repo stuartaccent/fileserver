@@ -1,0 +1,109 @@
+<html lang="en">
+  <head>
+    <title>S3 Browser</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <script src="//unpkg.com/alpinejs" defer></script>
+    <script src="//unpkg.com/dropzone@6.0.0-beta.1/dist/dropzone-min.js"></script>
+    <link href="//unpkg.com/dropzone@6.0.0-beta.1/dist/dropzone.css" rel="stylesheet" type="text/css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/karma-css@latest/dist/karma.min.css">
+  </head>
+  <body style="margin: 10rem 0">
+    <div class="container">
+      <h1 style="margin-bottom: 5rem">S3 Browser</h1>
+      <div
+        x-data="{ path: 'files/', files: [] }"
+        x-init="files = await getfiles(path)"
+        @refresh.window="files = await getfiles(path)"
+        @delete="files = await deletefiles(path)"
+      >
+        <div class="d-flex" style="margin-bottom: 2rem">
+          <input id="path" @keyup.enter="$dispatch('refresh')" x-model="path" type="text" style="margin-bottom: 0" />
+          <input @click="$dispatch('refresh')" type="button" value="refresh" class="button button-secondary" />
+          <input @click="$dispatch('delete')" type="button" value="delete" class="button ml-auto" />
+        </div>
+        <table style="margin-bottom: 2rem" class="table-headed table-bordered table-striped">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Last Modified</th>
+              <th>Size</th>
+              <th>ETag</th>
+              <th>Storage Class</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="file in files" :key="file.Key">
+              <tr>
+                <td><a x-bind:href="`http://localhost/s3/get/${file.Key}`" target="_blank" x-text="file.Key"></a></td>
+                <td x-text="file.LastModified"></td>
+                <td x-text="file.Size"></td>
+                <td x-text="file.ETag"></td>
+                <td x-text="file.StorageClass"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <form class="dropzone" id="file-dropzone"></form>
+      </div>
+    </div>
+    <script>
+      const headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+
+      new Dropzone("#file-dropzone", {
+        url: ".",
+        init: function() {
+          this.on("processing", function(file) {
+            this.options.url = file.signingData.url;
+          })
+          this.on("sending", function(file, xhr, formData) {
+            for (let [name, value] of Object.entries(file.signingData.fields)) {
+              formData.append(name, value)
+            }
+          });
+          this.on("complete", function(file) {
+            window.dispatchEvent(new CustomEvent('refresh'))
+          });
+        },
+        accept (file, done) {
+          const path = document.querySelector('#path')
+          const file_request = {
+            "path": path.value,
+            "filename": file.name,
+            "content_type": file.type,
+            "size": file.size
+          }
+          fetch("http://localhost/s3/upload/request", {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(file_request),
+          }).then(response => {
+            return response.json()
+          }).then(data => {
+            file.signingData = data
+            done()
+          })
+        }
+      });
+
+      async function getfiles(path) {
+        return (await fetch('http://localhost/s3/list', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({path: path})
+        })).json()
+      }
+
+      async function deletefiles(path) {
+        await fetch('http://localhost/s3/delete', {
+          method: 'DELETE',
+          headers: headers,
+          body: JSON.stringify({path: path})
+        });
+      }
+
+    </script>
+  </body>
+</html>

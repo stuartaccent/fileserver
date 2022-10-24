@@ -1,0 +1,45 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=appdb
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      args:
+        PIPENV_INSTALL_OPTIONS: --dev
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@db:5432/appdb
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:password@db:5432/appdb_test
+      SECRET_KEY: 358cb7a6f3a39320d0f9014c7e5406992acfdfdec22c1eca0f7ca7fa8c747928
+      AWS_ACCESS_KEY: AWS_ACCESS_KEY
+      AWS_SECRET_KEY: AWS_SECRET_KEY
+      AWS_REGION: AWS_REGION
+      AWS_S3_BUCKET: AWS_S3_BUCKET
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./src:/app
+    command:
+      - "/start-reload.sh"
+    ports:
+      - "80:80"
+
+volumes:
+  postgres:
